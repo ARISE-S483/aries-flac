@@ -19,7 +19,9 @@ function parseBody(req) {
 }
 
 function buildInjectionScript(env) {
-    const AUTH_ENABLED = (env.AUTH_ENABLED ?? 'false') !== 'false';
+    // This self-hosted build is intentionally public. Keep provider settings
+    // available, but never inject the server-side sign-in gate.
+    const AUTH_ENABLED = false;
     const APPWRITE_ENDPOINT = env.APPWRITE_ENDPOINT;
     const APPWRITE_PROJECT_ID = env.APPWRITE_PROJECT_ID;
     const POCKETBASE_URL = env.POCKETBASE_URL;
@@ -75,7 +77,9 @@ export default function authGatePlugin() {
             }
 
             let loginHtml = null;
-            const AUTH_ENABLED = (env.AUTH_ENABLED ?? 'false') !== 'false';
+            // Match the production transform: previews of this project are
+            // public even if an inherited environment has AUTH_ENABLED set.
+            const AUTH_ENABLED = false;
             if (AUTH_ENABLED) {
                 const loginPath = join(distDir, 'login.html');
                 if (existsSync(loginPath)) {
