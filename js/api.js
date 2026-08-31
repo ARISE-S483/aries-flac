@@ -3066,12 +3066,16 @@ export class LosslessAPI {
         }
 
         if (!unifiedResult?.url) {
-            unifiedResult = await this.getUnifiedPlaybackStreamUrl(id, quality, {
-                preferAdaptiveAuto: true,
-                track,
-                allowCencWithoutKeyId: needsProxyDecryption,
-                intent: 'stream',
-            });
+            try {
+                unifiedResult = await this.getUnifiedPlaybackStreamUrl(id, quality, {
+                    preferAdaptiveAuto: true,
+                    track,
+                    allowCencWithoutKeyId: needsProxyDecryption,
+                    intent: 'stream',
+                });
+            } catch (err) {
+                console.debug('Unified Playback lookup failed, will try fallback providers:', err);
+            }
         }
 
         if (unifiedResult?.url) {
