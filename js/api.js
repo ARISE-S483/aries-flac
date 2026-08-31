@@ -1901,13 +1901,45 @@ export class LosslessAPI {
         return null;
     }
 
-    async getDirectTidalPlaybackInfo(id, quality = 'LOSSLESS') {
-        const tidalTrackId = id && !String(id).startsWith('apple:') ? id : null;
-        if (!tidalTrackId) return null;
+    async getDirectTidalPlaybackInfo(id, quality = 'LOSSLESS', options = {}) {
+        let tidalTrackId = id && !String(id).startsWith('apple:') && !isNaN(Number(id)) ? String(id) : null;
+        const track = options.track || null;
 
         try {
             const token = await this.getTidalClientToken();
             if (!token) return null;
+
+            if (!tidalTrackId) {
+                if (track?.isrc) {
+                    try {
+                        const isrcUrl = wrapTidalUrl(`https://api.tidal.com/v1/tracks?isrc=${encodeURIComponent(track.isrc)}&countryCode=US`);
+                        const isrcRes = await fetch(isrcUrl, { headers: { Authorization: `Bearer ${token}` } });
+                        if (isrcRes.ok) {
+                            const isrcData = await isrcRes.json();
+                            const item = isrcData.items?.[0] || (isrcData.id ? isrcData : null);
+                            if (item?.id) tidalTrackId = String(item.id);
+                        }
+                    } catch {}
+                }
+
+                if (!tidalTrackId && (track?.title || track?.name)) {
+                    const artistName = track.artist?.name || track.artists?.[0]?.name || (Array.isArray(track.artists) ? track.artists.map(a => a.name || a).join(' ') : '') || '';
+                    const query = `${track.title || track.name} ${artistName}`.trim();
+                    if (query) {
+                        try {
+                            const searchUrl = wrapTidalUrl(`https://api.tidal.com/v1/search/tracks?query=${encodeURIComponent(query)}&limit=5&countryCode=US`);
+                            const searchRes = await fetch(searchUrl, { headers: { Authorization: `Bearer ${token}` } });
+                            if (searchRes.ok) {
+                                const searchData = await searchRes.json();
+                                const first = searchData.items?.[0];
+                                if (first?.id) tidalTrackId = String(first.id);
+                            }
+                        } catch {}
+                    }
+                }
+            }
+
+            if (!tidalTrackId) return null;
 
             const requestedQuality = normalizeQualityToken(quality) || quality || 'LOSSLESS';
             const rawUrl = `https://api.tidal.com/v1/tracks/${tidalTrackId}/playbackinfo?audioquality=${encodeURIComponent(requestedQuality)}&playbackmode=STREAM&assetpresentation=FULL&countryCode=US`;
@@ -3099,7 +3131,7 @@ export class LosslessAPI {
             return result;
         }
 
-        const directTidalResult = await this.getDirectTidalPlaybackInfo(id, quality);
+        const directTidalResult = await this.getDirectTidalPlaybackInfo(id, quality, { ...options, track });
         if (directTidalResult?.url) {
             this.streamCache.set(cacheKey, directTidalResult);
             return directTidalResult;
