@@ -3185,12 +3185,13 @@ export const unifiedPlaybackSettings = {
 
     getApiBaseUrl() {
         try {
+            if (import.meta.env?.DEV && !localStorage.getItem(this.API_BASE_URL_KEY)) return '/music-api-proxy';
             const storedUrl =
                 localStorage.getItem(this.API_BASE_URL_KEY) || localStorage.getItem('amazon-music-api-base-url');
             if (storedUrl && !this.LEGACY_API_BASE_URLS.includes(storedUrl.replace(/\/+$/, ''))) {
                 return storedUrl;
             }
-            return import.meta.env.VITE_UNIFIED_PLAYBACK_API_BASE_URL || this.DEFAULT_API_BASE_URL;
+            return import.meta.env?.VITE_UNIFIED_PLAYBACK_API_BASE_URL || this.DEFAULT_API_BASE_URL;
         } catch {
             return this.DEFAULT_API_BASE_URL;
         }
@@ -3249,6 +3250,7 @@ export const deezerFallbackSettings = {
 
     getApiBaseUrl() {
         try {
+            if (import.meta.env?.DEV && !localStorage.getItem(this.API_BASE_URL_KEY)) return '/dzr-proxy';
             return localStorage.getItem(this.API_BASE_URL_KEY) || this.DEFAULT_API_BASE_URL;
         } catch {
             return this.DEFAULT_API_BASE_URL;
