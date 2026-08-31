@@ -11,6 +11,11 @@ const SECTION_TO_APPLE_TYPE = {
 let memoryToken = null;
 let tokenRequestPromise = null;
 
+// Kept as a public compatibility hook for the unified MusicAPI cache reset.
+// This Vercel variant resolves video covers directly, so it has no separate
+// persistent video-cover cache to clear.
+export function clearStoredVideoCovers() {}
+
 function normalize(value) {
     return String(value || '')
         .normalize('NFKD')

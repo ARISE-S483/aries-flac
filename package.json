@@ -43,6 +43,7 @@
     "formidable": "^3.5.4",
     "globals": "^17.4.0",
     "htmlhint": "^1.9.2",
+    "playwright": "^1.62.1",
     "prettier": "^3.8.1",
     "stylelint": "^17.6.0",
     "stylelint-config-standard": "^39.0.1",
