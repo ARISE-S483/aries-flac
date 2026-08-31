@@ -2,16 +2,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
-  "rewrites": [
-    {
-      "source": "/dzr-proxy/:path*",
-      "destination": "https://dzr.tabs-vs-spaces.wtf/:path*"
-    },
-    {
-      "source": "/music-api-proxy/:path*",
-      "destination": "https://music-api.geeked.wtf/:path*"
-    }
-  ],
+
   "headers": [
     {
       "source": "/(.*)",

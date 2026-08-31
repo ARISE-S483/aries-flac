@@ -66,27 +66,9 @@ export default defineConfig(({ mode }) => {
         server: {
             fs: {
                 allow: ['.', 'node_modules'],
+                // host: true,
+                // allowedHosts: ['<your_tailscale_hostname>'], // e.g. pi5.tailf5f622.ts.net
             },
-            proxy: {
-                '/dzr-proxy': {
-                    target: 'https://dzr.tabs-vs-spaces.wtf',
-                    changeOrigin: true,
-                    rewrite: (path) => path.replace(/^\/dzr-proxy/, ''),
-                    headers: {
-                        'Origin': 'https://monochrome.tf',
-                        'Referer': 'https://monochrome.tf/'
-                    }
-                },
-                '/music-api-proxy': {
-                    target: 'https://music-api.geeked.wtf',
-                    changeOrigin: true,
-                    rewrite: (path) => path.replace(/^\/music-api-proxy/, ''),
-                    headers: {
-                        'Origin': 'https://monochrome.tf',
-                        'Referer': 'https://monochrome.tf/'
-                    }
-                }
-            }
         },
         // preview: {
         //     host: true,
