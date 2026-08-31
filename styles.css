@@ -989,16 +989,22 @@ ul {
     height: 100vh;
     height: 100dvh;
     min-height: 0;
+    padding: 1rem;
+    gap: 1rem;
+    box-sizing: border-box;
+    background-color: var(--background); /* Ensure a base background behind floating panels */
     grid-template:
         'sidebar main' 1fr
-        'player player' auto / 210px 1fr;
+        'sidebar player' auto / 210px 1fr;
 }
 
 .sidebar {
     grid-area: sidebar;
     min-height: 0;
-    background-color: var(--background);
-    border-right: 1px solid var(--border);
+    background-color: color-mix(in srgb, var(--card) 40%, transparent);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
     padding: 1.25rem;
     display: flex;
     flex-direction: column;
@@ -1050,9 +1056,13 @@ ul {
     padding: var(--spacing-xl);
     scroll-behavior: smooth;
     position: relative;
+    background-color: color-mix(in srgb, var(--card) 40%, transparent);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
 
     /* Context for background */
-    padding-bottom: 160px !important;
+    padding-bottom: 40px !important;
 }
 
 .server-disruption-sidebar {
@@ -1133,20 +1143,12 @@ ul {
     gap: var(--spacing-sm);
     z-index: 2100;
 
-    /* Floating bar overrides */
-    width: calc(96% - 190px) !important;
-    left: calc(190px + 2%);
-    bottom: max(15px, env(safe-area-inset-bottom)) !important;
-    border-radius: var(--radius);
-
-    /* Standardized radius */
-    position: fixed !important;
+    border-radius: var(--radius-lg);
     background-color: color-mix(in srgb, var(--card) 85%, transparent);
     backdrop-filter: blur(20px);
     border: 1px solid var(--border);
     box-shadow: var(--shadow-2xl);
 
-    /* Standardized shadow */
     transition: all var(--transition-normal) var(--ease-out-back);
     height: var(--player-bar-height-desktop);
     animation: slide-up var(--transition-slow) var(--ease-out-back);
