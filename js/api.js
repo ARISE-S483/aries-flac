@@ -1864,6 +1864,113 @@ export class LosslessAPI {
         return { url, format, provider: 'deezer', rgInfo: null };
     }
 
+    async getTidalClientToken() {
+        if (this._tidalClientToken && Date.now() < (this._tidalClientTokenExpiry || 0)) {
+            return this._tidalClientToken;
+        }
+
+        const CLIENT_ID = 'txNoH4kkV41MfH25';
+        const CLIENT_SECRET = 'dQjy0MinCEvxi1O4UmxvxWnDjt4cgHBPw8ll6nYBk98=';
+
+        const params = new URLSearchParams({
+            client_id: CLIENT_ID,
+            client_secret: CLIENT_SECRET,
+            grant_type: 'client_credentials',
+        });
+
+        try {
+            const res = await fetch('https://auth.tidal.com/v1/oauth2/token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    Authorization: 'Basic ' + btoa(`${CLIENT_ID}:${CLIENT_SECRET}`),
+                },
+                body: params,
+            });
+
+            if (!res.ok) return null;
+            const data = await res.json();
+            if (data.access_token) {
+                this._tidalClientToken = data.access_token;
+                this._tidalClientTokenExpiry = Date.now() + ((data.expires_in || 86400) - 60) * 1000;
+                return this._tidalClientToken;
+            }
+        } catch (e) {
+            console.warn('Failed to fetch Tidal client token:', e);
+        }
+        return null;
+    }
+
+    async getDirectTidalPlaybackInfo(id, quality = 'LOSSLESS') {
+        const tidalTrackId = id && !String(id).startsWith('apple:') ? id : null;
+        if (!tidalTrackId) return null;
+
+        try {
+            const token = await this.getTidalClientToken();
+            if (!token) return null;
+
+            const requestedQuality = normalizeQualityToken(quality) || quality || 'LOSSLESS';
+            const rawUrl = `https://api.tidal.com/v1/tracks/${tidalTrackId}/playbackinfo?audioquality=${encodeURIComponent(requestedQuality)}&playbackmode=STREAM&assetpresentation=FULL&countryCode=US`;
+            const proxiedUrl = wrapTidalUrl(rawUrl);
+
+            const response = await fetch(proxiedUrl, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            if (response.ok) {
+                const json = await response.json();
+                if (json.manifest) {
+                    const streamUrl = this.extractStreamUrlFromManifest(json.manifest);
+                    if (streamUrl) {
+                        return {
+                            url: streamUrl,
+                            provider: 'tidal',
+                            playbackType: json.manifestMimeType || 'application/dash+xml',
+                            mimeType: json.manifestMimeType || 'application/dash+xml',
+                            quality: json.audioQuality || requestedQuality,
+                            rgInfo: null,
+                        };
+                    }
+                } else if (json.url || json.streamUrl) {
+                    return {
+                        url: json.url || json.streamUrl,
+                        provider: 'tidal',
+                        playbackType: 'direct',
+                        mimeType: json.mimeType || 'audio/mp4',
+                        quality: json.audioQuality || requestedQuality,
+                        rgInfo: null,
+                    };
+                }
+            } else if (requestedQuality !== 'LOW') {
+                const fallbackUrl = wrapTidalUrl(`https://api.tidal.com/v1/tracks/${tidalTrackId}/playbackinfo?audioquality=LOW&playbackmode=STREAM&assetpresentation=FULL&countryCode=US`);
+                const fallbackRes = await fetch(fallbackUrl, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (fallbackRes.ok) {
+                    const json = await fallbackRes.json();
+                    if (json.manifest) {
+                        const streamUrl = this.extractStreamUrlFromManifest(json.manifest);
+                        if (streamUrl) {
+                            return {
+                                url: streamUrl,
+                                provider: 'tidal',
+                                playbackType: json.manifestMimeType || 'application/dash+xml',
+                                mimeType: json.manifestMimeType || 'application/dash+xml',
+                                quality: 'LOW',
+                                rgInfo: null,
+                            };
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            console.warn('Direct Tidal fallback failed:', err);
+        }
+        return null;
+    }
+
     getAmazonMusicQuality(quality = 'LOSSLESS', { preferAdaptiveAuto = false } = {}) {
         let adaptiveQuality = null;
         try {
@@ -2992,11 +3099,17 @@ export class LosslessAPI {
             return result;
         }
 
+        const directTidalResult = await this.getDirectTidalPlaybackInfo(id, quality);
+        if (directTidalResult?.url) {
+            this.streamCache.set(cacheKey, directTidalResult);
+            return directTidalResult;
+        }
+
         notifyAudioSourceMissing();
         throw new Error(
             track?.isrc
-                ? 'Could not resolve stream URL from Unified Playback or Deezer'
-                : 'Could not resolve stream URL: Unified Playback failed and the track has no ISRC for Deezer lookup'
+                ? 'Could not resolve stream URL from Unified Playback, Deezer, or Tidal'
+                : 'Could not resolve stream URL: all playback providers failed'
         );
     }
 
@@ -3124,12 +3237,21 @@ export class LosslessAPI {
                 }
             }
 
-            const externalResult = unifiedResult?.url ? unifiedResult : deezerResult;
+            let directTidalResult = null;
+            if (!unifiedResult?.url && !deezerResult?.url) {
+                directTidalResult = await this.getDirectTidalPlaybackInfo(id, cleanQuality);
+            }
+
+            const externalResult = unifiedResult?.url
+                ? unifiedResult
+                : deezerResult?.url
+                  ? deezerResult
+                  : directTidalResult;
             if (externalResult?.url) {
                 externalStreamUrl = externalResult.url;
                 externalRgInfo = externalResult.rgInfo;
                 externalStreamType = externalResult.playbackType || null;
-                externalProvider = externalResult.provider || (unifiedResult?.url ? 'unified' : 'deezer');
+                externalProvider = externalResult.provider || (unifiedResult?.url ? 'unified' : deezerResult?.url ? 'deezer' : 'tidal');
                 externalDecryptionKey = externalResult.decryptionKey || null;
                 externalKeyId = externalResult.keyId || null;
                 externalMimeType = externalResult.mimeType || null;
@@ -3165,12 +3287,30 @@ export class LosslessAPI {
                         },
                     };
                 } else {
-                    notifyAudioSourceMissing();
-                    throw new Error(
-                        track?.isrc
-                            ? 'Could not resolve audio stream from Unified Playback or Deezer'
-                            : 'Cannot resolve audio stream: Unified Playback failed and track has no ISRC for Deezer lookup'
-                    );
+                    const fallbackTidalResult = await this.getDirectTidalPlaybackInfo(id, 'LOSSLESS');
+                    if (fallbackTidalResult?.url) {
+                        externalProvider = 'tidal';
+                        externalStreamUrl = fallbackTidalResult.url;
+                        externalSourceUrl = fallbackTidalResult.url;
+                        externalStreamType = fallbackTidalResult.playbackType;
+                        externalMimeType = fallbackTidalResult.mimeType;
+                        lookup = {
+                            info: {
+                                audioQuality: cleanQuality,
+                                trackReplayGain: 0,
+                                trackPeakAmplitude: 1,
+                                albumReplayGain: 0,
+                                albumPeakAmplitude: 1,
+                            },
+                        };
+                    } else {
+                        notifyAudioSourceMissing();
+                        throw new Error(
+                            track?.isrc
+                                ? 'Could not resolve audio stream from Unified Playback, Deezer, or Tidal'
+                                : 'Cannot resolve audio stream: all playback sources failed'
+                        );
+                    }
                 }
             }
         }
