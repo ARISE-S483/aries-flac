@@ -1909,92 +1909,95 @@ export class LosslessAPI {
             const token = await this.getTidalClientToken();
             if (!token) return null;
 
-            if (!tidalTrackId) {
-                if (track?.isrc) {
+            const requestedQuality = normalizeQualityToken(quality) || quality || 'LOSSLESS';
+
+            const tryPlaybackForTrackId = async (tId, country = 'US') => {
+                if (!tId) return null;
+                const qualitiesToTry = [requestedQuality, 'LOSSLESS', 'HIGH', 'LOW'];
+                const uniqueQualities = [...new Set(qualitiesToTry)];
+
+                for (const q of uniqueQualities) {
                     try {
-                        const isrcUrl = wrapTidalUrl(`https://api.tidal.com/v1/tracks?isrc=${encodeURIComponent(track.isrc)}&countryCode=US`);
-                        const isrcRes = await fetch(isrcUrl, { headers: { Authorization: `Bearer ${token}` } });
-                        if (isrcRes.ok) {
-                            const isrcData = await isrcRes.json();
-                            const item = isrcData.items?.[0] || (isrcData.id ? isrcData : null);
-                            if (item?.id) tidalTrackId = String(item.id);
+                        const rawUrl = `https://api.tidal.com/v1/tracks/${tId}/playbackinfo?audioquality=${encodeURIComponent(q)}&playbackmode=STREAM&assetpresentation=FULL&countryCode=${country}`;
+                        const proxiedUrl = wrapTidalUrl(rawUrl);
+                        const response = await fetch(proxiedUrl, {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+
+                        if (response.ok) {
+                            const json = await response.json();
+                            if (json.manifest) {
+                                const streamUrl = this.extractStreamUrlFromManifest(json.manifest);
+                                if (streamUrl) {
+                                    return {
+                                        url: streamUrl,
+                                        provider: 'tidal',
+                                        playbackType: json.manifestMimeType || 'application/dash+xml',
+                                        mimeType: json.manifestMimeType || 'application/dash+xml',
+                                        quality: json.audioQuality || q,
+                                        rgInfo: null,
+                                    };
+                                }
+                            } else if (json.url || json.streamUrl) {
+                                return {
+                                    url: json.url || json.streamUrl,
+                                    provider: 'tidal',
+                                    playbackType: 'direct',
+                                    mimeType: json.mimeType || 'audio/mp4',
+                                    quality: json.audioQuality || q,
+                                    rgInfo: null,
+                                };
+                            }
                         }
                     } catch {}
                 }
+                return null;
+            };
 
-                if (!tidalTrackId && (track?.title || track?.name)) {
-                    const artistName = track.artist?.name || track.artists?.[0]?.name || (Array.isArray(track.artists) ? track.artists.map(a => a.name || a).join(' ') : '') || '';
-                    const query = `${track.title || track.name} ${artistName}`.trim();
-                    if (query) {
-                        try {
-                            const searchUrl = wrapTidalUrl(`https://api.tidal.com/v1/search/tracks?query=${encodeURIComponent(query)}&limit=5&countryCode=US`);
-                            const searchRes = await fetch(searchUrl, { headers: { Authorization: `Bearer ${token}` } });
-                            if (searchRes.ok) {
-                                const searchData = await searchRes.json();
-                                const first = searchData.items?.[0];
-                                if (first?.id) tidalTrackId = String(first.id);
-                            }
-                        } catch {}
-                    }
-                }
+            // 1. Try with the given ID
+            if (tidalTrackId) {
+                const res = await tryPlaybackForTrackId(tidalTrackId, 'US');
+                if (res) return res;
+                const resGB = await tryPlaybackForTrackId(tidalTrackId, 'GB');
+                if (resGB) return resGB;
             }
 
-            if (!tidalTrackId) return null;
-
-            const requestedQuality = normalizeQualityToken(quality) || quality || 'LOSSLESS';
-            const rawUrl = `https://api.tidal.com/v1/tracks/${tidalTrackId}/playbackinfo?audioquality=${encodeURIComponent(requestedQuality)}&playbackmode=STREAM&assetpresentation=FULL&countryCode=US`;
-            const proxiedUrl = wrapTidalUrl(rawUrl);
-
-            const response = await fetch(proxiedUrl, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                },
-            });
-
-            if (response.ok) {
-                const json = await response.json();
-                if (json.manifest) {
-                    const streamUrl = this.extractStreamUrlFromManifest(json.manifest);
-                    if (streamUrl) {
-                        return {
-                            url: streamUrl,
-                            provider: 'tidal',
-                            playbackType: json.manifestMimeType || 'application/dash+xml',
-                            mimeType: json.manifestMimeType || 'application/dash+xml',
-                            quality: json.audioQuality || requestedQuality,
-                            rgInfo: null,
-                        };
-                    }
-                } else if (json.url || json.streamUrl) {
-                    return {
-                        url: json.url || json.streamUrl,
-                        provider: 'tidal',
-                        playbackType: 'direct',
-                        mimeType: json.mimeType || 'audio/mp4',
-                        quality: json.audioQuality || requestedQuality,
-                        rgInfo: null,
-                    };
-                }
-            } else if (requestedQuality !== 'LOW') {
-                const fallbackUrl = wrapTidalUrl(`https://api.tidal.com/v1/tracks/${tidalTrackId}/playbackinfo?audioquality=LOW&playbackmode=STREAM&assetpresentation=FULL&countryCode=US`);
-                const fallbackRes = await fetch(fallbackUrl, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                if (fallbackRes.ok) {
-                    const json = await fallbackRes.json();
-                    if (json.manifest) {
-                        const streamUrl = this.extractStreamUrlFromManifest(json.manifest);
-                        if (streamUrl) {
-                            return {
-                                url: streamUrl,
-                                provider: 'tidal',
-                                playbackType: json.manifestMimeType || 'application/dash+xml',
-                                mimeType: json.manifestMimeType || 'application/dash+xml',
-                                quality: 'LOW',
-                                rgInfo: null,
-                            };
+            // 2. If given ID failed or was absent, search by ISRC
+            if (track?.isrc) {
+                try {
+                    const isrcUrl = wrapTidalUrl(`https://api.tidal.com/v1/tracks?isrc=${encodeURIComponent(track.isrc)}&countryCode=US`);
+                    const isrcRes = await fetch(isrcUrl, { headers: { Authorization: `Bearer ${token}` } });
+                    if (isrcRes.ok) {
+                        const isrcData = await isrcRes.json();
+                        const candidates = isrcData.items || (isrcData.id ? [isrcData] : []);
+                        for (const cand of candidates) {
+                            if (cand?.id && String(cand.id) !== tidalTrackId) {
+                                const res = await tryPlaybackForTrackId(String(cand.id), 'US');
+                                if (res) return res;
+                            }
                         }
                     }
+                } catch {}
+            }
+
+            // 3. Search Tidal by title + artist to find working alternatives
+            if (track?.title || track?.name) {
+                const artistName = track.artist?.name || track.artists?.[0]?.name || (Array.isArray(track.artists) ? track.artists.map(a => a.name || a).join(' ') : '') || '';
+                const query = `${track.title || track.name} ${artistName}`.trim();
+                if (query) {
+                    try {
+                        const searchUrl = wrapTidalUrl(`https://api.tidal.com/v1/search/tracks?query=${encodeURIComponent(query)}&limit=5&countryCode=US`);
+                        const searchRes = await fetch(searchUrl, { headers: { Authorization: `Bearer ${token}` } });
+                        if (searchRes.ok) {
+                            const searchData = await searchRes.json();
+                            for (const item of searchData.items || []) {
+                                if (item?.id && String(item.id) !== tidalTrackId) {
+                                    const res = await tryPlaybackForTrackId(String(item.id), 'US');
+                                    if (res) return res;
+                                }
+                            }
+                        }
+                    } catch {}
                 }
             }
         } catch (err) {
@@ -2214,7 +2217,7 @@ export class LosslessAPI {
                 if (error) reject(error);
                 else resolve(token);
             };
-            timeoutId = setTimeout(() => finish(new Error('Turnstile timed out')), 30000);
+            timeoutId = setTimeout(() => finish(new Error('Turnstile timed out')), 3000);
 
             try {
                 widgetId = turnstile.render(container, {

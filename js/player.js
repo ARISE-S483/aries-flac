@@ -3336,6 +3336,9 @@ export class Player {
 
     async safePlay(element = this.activeElement) {
         try {
+            if (audioContextManager && audioContextManager.audioContext?.state === 'suspended') {
+                void audioContextManager.resume().catch(() => {});
+            }
             await element.play();
             this.autoplayBlocked = false;
             return true;

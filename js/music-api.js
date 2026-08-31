@@ -3,12 +3,7 @@
 import { LosslessAPI } from './api.js';
 import { PodcastsAPI } from './podcasts-api.js';
 import { musicProviderSettings } from './storage.js';
-import {
-    AppleMusicSearchAPI,
-    clearStoredVideoCovers,
-    normalizeAppleArtist,
-    normalizeAppleSearchResults,
-} from './apple-music-api.js';
+import { AppleMusicSearchAPI, clearStoredVideoCovers, normalizeAppleSearchResults } from './apple-music-api.js';
 import { getCommunityPlaylist } from './community-playlists.js';
 
 /**
@@ -623,8 +618,8 @@ export class MusicAPI {
         this.applePlaylistCache.clear();
         this.appleEntityRequests.clear();
         this.appleMusicSearchAPI.suggestionCache.clear();
-        this.appleMusicSearchAPI.viewCache.clear();
-        this.appleMusicSearchAPI.viewRequests.clear();
+        this.appleMusicSearchAPI.viewCache?.clear?.();
+        this.appleMusicSearchAPI.viewRequests?.clear?.();
     }
 
     getCacheStats() {
