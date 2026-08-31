@@ -3185,13 +3185,13 @@ export const unifiedPlaybackSettings = {
 
     getApiBaseUrl() {
         try {
-            if (import.meta.env?.DEV && !localStorage.getItem(this.API_BASE_URL_KEY)) return '/music-api-proxy';
             const storedUrl =
                 localStorage.getItem(this.API_BASE_URL_KEY) || localStorage.getItem('amazon-music-api-base-url');
             if (storedUrl && !this.LEGACY_API_BASE_URLS.includes(storedUrl.replace(/\/+$/, ''))) {
                 return storedUrl;
             }
-            return import.meta.env?.VITE_UNIFIED_PLAYBACK_API_BASE_URL || this.DEFAULT_API_BASE_URL;
+            // Use proxy path to avoid CORS — works in dev (Vite proxy) and production (Vercel rewrites)
+            return '/music-api-proxy';
         } catch {
             return this.DEFAULT_API_BASE_URL;
         }
@@ -3250,8 +3250,10 @@ export const deezerFallbackSettings = {
 
     getApiBaseUrl() {
         try {
-            if (import.meta.env?.DEV && !localStorage.getItem(this.API_BASE_URL_KEY)) return '/dzr-proxy';
-            return localStorage.getItem(this.API_BASE_URL_KEY) || this.DEFAULT_API_BASE_URL;
+            const storedUrl = localStorage.getItem(this.API_BASE_URL_KEY);
+            if (storedUrl) return storedUrl;
+            // Use proxy path to avoid CORS — works in dev (Vite proxy) and production (Vercel rewrites)
+            return '/dzr-proxy';
         } catch {
             return this.DEFAULT_API_BASE_URL;
         }
